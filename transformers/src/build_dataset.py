@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 
 from datasets import Dataset, tqdm
@@ -10,7 +11,7 @@ from transformers import BertTokenizerFast, GPT2TokenizerFast
 from args import parse_arguments
 from arsenal_tokenizer import PreTrainedArsenalTokenizer
 
-def process_input(data_dir, out_dir, filename, max_word_len, ignore_prefixes, ignore_suffixes, check_balance, grammar_name):
+def process_input(data_dir, out_dir, filename, max_word_len, ignore_prefixes, ignore_suffixes, check_balance):
 
     print(f"processing file {filename}...")
     with open(os.path.join(data_dir, filename), "r") as f:
@@ -20,7 +21,7 @@ def process_input(data_dir, out_dir, filename, max_word_len, ignore_prefixes, ig
     source_vocab = []
     target_vocab = []
     special_tokens = [] # all words containing '_' are treated as special tokens and added to the tokenizer
-    grammar_prefix = '_' + grammar_name + '.'
+
 
     # read input file, create:
     # - dataset: dict of source/target sentences
@@ -43,8 +44,8 @@ def process_input(data_dir, out_dir, filename, max_word_len, ignore_prefixes, ig
                 dataset[source].append(target)
             target_vocab.extend(target.split(" "))
 
-    if any([grammar_prefix not in tkn for tkn in special_tokens]):
-        raise Exception("The grammar name given is not valid")
+    # the prefix used for entity placeholders - use this to split compound tokens below
+    grammar_prefix = re.match(".*?(_\w*)", special_tokens[0]).group(1)
 
     #  clean special tokens according to ignore special prefix/suffix chars, trailing periods, split on parentheses etc
     cleaned_special_tokens = []
@@ -112,14 +113,14 @@ def process_input(data_dir, out_dir, filename, max_word_len, ignore_prefixes, ig
                 skip = True
                 special_tokens.append(inner)
                 special_tokens.append(outer)
-            
+
             # we separate all the different entities in the same string
             if len(t.split(grammar_prefix)) > 2:
                 compound_terms = t.split(grammar_prefix)[1:]
                 compound_tokens = [grammar_prefix + term for term in compound_terms]
                 special_tokens.extend(compound_tokens)
                 skip = True
-                
+
         if not skip:
             cleaned_special_tokens.append(t)
 
@@ -208,12 +209,12 @@ def build_dataset(args):
     ignore_suffixes = args.strip_suffix_chars.split()
     ignore_prefixes = args.strip_prefix_chars.split()
     check_balance = args.check_balance
-    grammar_name = args.grammar_name
+
 
     print(f"discarding all instances with more than {max_word_len} words in the source sentences")
 
-    train_dataset, special_tokens, source_vocab, target_vocab = process_input(data_dir, out_dir, train_file, max_word_len, ignore_prefixes, ignore_suffixes, check_balance,grammar_name)
-    val_dataset, val_special_tokens, val_source_vocab, val_target_vocab = process_input(data_dir, out_dir, val_file, max_word_len, ignore_prefixes, ignore_suffixes, check_balance,grammar_name)
+    train_dataset, special_tokens, source_vocab, target_vocab = process_input(data_dir, out_dir, train_file, max_word_len, ignore_prefixes, ignore_suffixes, check_balance)
+    val_dataset, val_special_tokens, val_source_vocab, val_target_vocab = process_input(data_dir, out_dir, val_file, max_word_len, ignore_prefixes, ignore_suffixes, check_balance)
 
     diffs = {}
 
